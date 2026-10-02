@@ -1,0 +1,34 @@
+name: Community use case proposal
+description: Request a new use case folder in the community blueprints catalog
+title: "[use case] <use case title>"
+labels: ["use-case"]
+body:
+  - type: input
+    id: usecase
+    attributes:
+      label: Use case (folder slug)
+      description: Lowercase, dash-separated. Becomes community/<slug>/.
+      placeholder: rag-chatbot
+    validations:
+      required: true
+  - type: input
+    id: maintainer
+    attributes:
+      label: Contact
+      placeholder: name / email or URL
+    validations:
+      required: true
+  - type: textarea
+    id: blueprints
+    attributes:
+      label: Blueprints you plan to publish
+      description: Rough list — names and what they deploy.
+    validations:
+      required: false
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I have read CONTRIBUTING.md
+          required: true

@@ -1,0 +1,67 @@
+# Contributing
+
+Blueprints are contributed by the community via pull request. Blueprints are
+grouped by use case: each lives under `community/<usecase>/`, where `<usecase>`
+is a short slug describing what the blueprints do (e.g. `rag-chatbot`).
+
+## Proposing a new use case folder
+
+1. **You (contributor):** open an issue using the *Community use case proposal*
+   template with your folder slug and a contact.
+2. **SUSE maintainers:** acknowledge the issue and confirm the
+   `community/<slug>/` folder name.
+3. **You (contributor):** open your first blueprint PR (below). SUSE maintainers
+   review and merge every PR.
+
+Adding a blueprint to an existing use case folder doesn't need an issue.
+
+## Adding or updating a blueprint
+
+1. Copy [`example/blueprints/example-chatbot-1.0.0.yaml`](example/blueprints/example-chatbot-1.0.0.yaml)
+   into `community/<usecase>/blueprints/`.
+2. Rename it to `<blueprint-name>-<version>.yaml` and edit the CR.
+3. Run the checks locally before pushing:
+   ```bash
+   python scripts/catalog.py validate
+   python scripts/catalog.py gen          # updates catalog.yaml
+   ```
+4. Commit **both** your blueprint and the regenerated `catalog.yaml`, then open
+   a PR.
+
+## Rules CI enforces
+
+| Rule | Why |
+|------|-----|
+| `kind: Blueprint`, `apiVersion: ai-factory.suse.com/v1alpha1` | It's a Blueprint CR |
+| filename = `<blueprint-name>-<version>.yaml` | predictable layout |
+| `metadata.name` = `<name>-<version>` with dots→dashes | operator slug convention |
+| labels `blueprint-name` / `blueprint-version` match filename & `spec.version` | no drift |
+| `spec.source: Custom` | community blueprints are labelled Custom, never SUSE, Nvidia or Partner |
+| optional `spec.icon`: `https://` URL on a public DNS hostname, or a base64 `png`/`gif`/`jpeg`/`webp` `data:` URI, max 16384 characters (no `http://`, SVG, IP addresses or internal hostnames) | the UI only renders icons that meet these rules |
+| required: `displayName`, `description`, `components` | usable catalog entry |
+| the CR validates against the live Blueprint CRD schema | valid on the cluster |
+| a `blueprint-name` lives in exactly one use case folder | no cross-folder collisions |
+| `catalog.yaml` is regenerated (not stale) | aggregate never drifts |
+
+## Review
+
+Opening a PR automatically:
+
+- runs the validation gate (all checks above),
+- labels the PR by use case folder,
+- posts a validation summary comment,
+- requests SUSE maintainer review (via `CODEOWNERS`).
+
+A SUSE maintainer merges once checks pass and reviews approve.
+
+## Writing good blueprints
+
+- Pin chart versions and image tags — reproducibility matters in air-gapped installs.
+- Put prerequisites (StorageClass, cert-manager, GPUs), exposed endpoints, and
+  any model/licensing notes in `spec.description`.
+- For `spec.icon`, prefer a small `data:` URI (a 64×64 PNG or WebP is plenty):
+  it renders in air-gapped clusters, where an `https://` logo cannot load. Keep
+  it inline in the blueprint; don't commit image files under `community/`,
+  since Fleet ships everything under that path to every cluster.
+- Prefer stable in-cluster service names (`fullnameOverride`) over release-name
+  coupling, so a blueprint installs under any namespace.
