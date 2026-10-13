@@ -1,0 +1,80 @@
+# Contributing
+
+Blueprints are contributed by the community via pull request. This repo hosts
+many contributors; you only ever touch your own `community/<contributor>/`
+folder.
+
+> [!IMPORTANT]
+> Community blueprints are **not supported by SUSE**. By contributing you agree
+> to maintain your blueprints yourself: answer issues, keep chart versions
+> current, and fix breakage. SUSE maintainers review PRs for validity and
+> safety, not for production readiness. Unmaintained blueprints may be removed.
+
+## Your first contribution
+
+No onboarding step is needed. Pick a folder slug (your GitHub handle or project
+name, lowercase, dash-separated) and open a PR that adds
+`community/<slug>/blueprints/`. The first PR claims the slug.
+
+Unsure whether a blueprint fits? Open a *Blueprint proposal* issue first.
+
+## Adding or updating a blueprint
+
+1. Copy [`example/blueprints/example-chatbot-1.0.0.yaml`](example/blueprints/example-chatbot-1.0.0.yaml)
+   into `community/<contributor>/blueprints/`.
+2. Rename it to `<blueprint-name>-<version>.yaml` and edit the CR.
+3. Run the checks locally before pushing:
+   ```bash
+   python scripts/catalog.py validate
+   python scripts/catalog.py gen          # updates community/catalog.yaml
+   ```
+4. Commit **both** your blueprint and the regenerated `community/catalog.yaml`,
+   then open a PR.
+
+## Rules CI enforces
+
+| Rule | Why |
+|------|-----|
+| `kind: Blueprint`, `apiVersion: ai-factory.suse.com/v1alpha1` | It's a Blueprint CR |
+| filename = `<blueprint-name>-<version>.yaml` | predictable layout |
+| `metadata.name` = `<name>-<version>` with dots→dashes | operator slug convention |
+| labels `blueprint-name` / `blueprint-version` match filename & `spec.version` | no drift |
+| annotation `ai-factory.suse.com/maintainer` set (GitHub handle, email or URL) | unsupported content needs a named owner |
+| `spec.source: Custom` | community blueprints are never labelled SUSE, Nvidia or Partner (see note below) |
+| optional `spec.icon`: `https://` URL on a public DNS hostname, or a base64 `png`/`gif`/`jpeg`/`webp` `data:` URI, max 16384 characters (no `http://`, SVG, IP addresses or internal hostnames) | the UI only renders icons that meet these rules |
+| required: `displayName`, `description`, `components` | usable catalog entry |
+| the CR validates against the live Blueprint CRD schema | valid on the cluster |
+| a `blueprint-name` is owned by exactly one contributor | no cross-contributor collisions |
+| `community/catalog.yaml` is regenerated (not stale) | aggregate never drifts |
+
+> [!NOTE]
+> The Blueprint CRD does not have a `Community` source yet, so community
+> blueprints use `Custom` for now. A dedicated `Community` source is planned in
+> SUSE AI Factory; once it lands, CI will require `spec.source: Community` and
+> existing blueprints will be migrated.
+
+## Review
+
+Opening a PR automatically:
+
+- runs the validation gate (all checks above),
+- labels the PR by contributor folder,
+- posts a validation summary comment,
+- requests SUSE maintainer review (via `CODEOWNERS`).
+
+A SUSE maintainer merges once checks pass and reviews approve. Approval means
+the blueprint is valid and not harmful; it is not a support commitment.
+
+## Writing good blueprints
+
+- Pin chart versions and image tags — reproducibility matters in air-gapped installs.
+- Put prerequisites (StorageClass, cert-manager, GPUs), exposed endpoints, and
+  any model/licensing notes in `spec.description`.
+- Use charts and images from sources users can trust and reach. Say so in
+  `spec.description` if a component needs credentials or a non-public registry.
+- For `spec.icon`, prefer a small `data:` URI (a 64×64 PNG or WebP is plenty):
+  it renders in air-gapped clusters, where an `https://` logo cannot load. Keep
+  it inline in the blueprint; don't commit image files under `community/`,
+  since Fleet ships everything under that path to every cluster.
+- Prefer stable in-cluster service names (`fullnameOverride`) over release-name
+  coupling, so a blueprint installs under any namespace.

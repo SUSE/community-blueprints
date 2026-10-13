@@ -1,0 +1,41 @@
+name: Blueprint proposal
+description: Propose a community blueprint before opening a PR (optional)
+title: "[proposal] <blueprint name>"
+labels: ["proposal"]
+body:
+  - type: input
+    id: contributor
+    attributes:
+      label: Contributor folder slug
+      description: >-
+        Your GitHub handle or project name, lowercase, dash-separated.
+        Becomes community/<slug>/.
+      placeholder: acme
+    validations:
+      required: true
+  - type: input
+    id: maintainer
+    attributes:
+      label: Maintainer contact
+      description: Goes into the ai-factory.suse.com/maintainer annotation.
+      placeholder: GitHub handle, email or URL
+    validations:
+      required: true
+  - type: textarea
+    id: blueprints
+    attributes:
+      label: Blueprints you plan to publish
+      description: Rough list — names, what they deploy, and chart sources.
+    validations:
+      required: false
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I have read CONTRIBUTING.md
+          required: true
+        - label: >-
+            I understand community blueprints are not supported by SUSE and
+            I will maintain what I contribute
+          required: true
