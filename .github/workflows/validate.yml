@@ -28,13 +28,14 @@ env:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Pinned runner image: ubuntu-latest moves between releases under us.
+    runs-on: ubuntu-24.04
     steps:
       # Actions pinned to immutable commit SHAs (tags are mutable). Comment = the
       # human-readable version each SHA corresponds to.
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -81,7 +82,7 @@ jobs:
         # Most community PRs come from forks, where GITHUB_TOKEN is read-only
         # and labelling/commenting is denied. Don't let that mask the Gate.
         continue-on-error: true
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');

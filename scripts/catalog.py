@@ -257,6 +257,7 @@ def dump_catalog(doc):
     header = (
         "# GENERATED FILE - do not edit the blueprints list by hand.\n"
         "# Regenerate with: python scripts/catalog.py gen\n"
+        "---\n"
     )
     return header + yaml.safe_dump(doc, sort_keys=False, default_flow_style=False)
 

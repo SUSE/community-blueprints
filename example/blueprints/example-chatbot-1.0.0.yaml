@@ -14,6 +14,7 @@
 #   * spec.icon is optional; if set it must be an https:// URL on a public
 #     hostname or a base64 png/gif/jpeg/webp data: URI (max 16384 chars).
 #     Prefer a data: URI so the logo also shows in air-gapped installs.
+---
 apiVersion: ai-factory.suse.com/v1alpha1
 kind: Blueprint
 metadata:
