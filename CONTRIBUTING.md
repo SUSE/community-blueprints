@@ -25,9 +25,13 @@ Unsure whether a blueprint fits? Open a *Blueprint proposal* issue first.
 2. Rename it to `<blueprint-name>-<version>.yaml` and edit the CR.
 3. Run the checks locally before pushing:
    ```bash
+   pip install -r requirements.txt
+   yamllint community example             # rules in .yamllint
    python scripts/catalog.py validate
    python scripts/catalog.py gen          # updates community/catalog.yaml
    ```
+   On Windows, set `PYTHONUTF8=1` first so non-ASCII characters (e.g. `—`)
+   don't trip the default code page.
 4. Commit **both** your blueprint and the regenerated `community/catalog.yaml`,
    then open a PR.
 
@@ -35,6 +39,7 @@ Unsure whether a blueprint fits? Open a *Blueprint proposal* issue first.
 
 | Rule | Why |
 |------|-----|
+| YAML passes `yamllint` with the repo's [`.yamllint`](.yamllint) (long lines only warn) | catches syntax errors, duplicate keys, bad indentation |
 | `kind: Blueprint`, `apiVersion: ai-factory.suse.com/v1alpha1` | It's a Blueprint CR |
 | filename = `<blueprint-name>-<version>.yaml` | predictable layout |
 | `metadata.name` = `<name>-<version>` with dots→dashes | operator slug convention |
@@ -59,7 +64,8 @@ Opening a PR automatically:
 
 - runs the validation gate (all checks above),
 - labels the PR by contributor folder,
-- posts a validation summary comment,
+- posts a validation summary comment (PRs from forks get the summary on the
+  workflow run page instead, since GitHub gives fork PRs a read-only token),
 - requests SUSE maintainer review (via `CODEOWNERS`).
 
 A SUSE maintainer merges once checks pass and reviews approve. Approval means
