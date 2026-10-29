@@ -66,6 +66,15 @@ spec:
         routerSpec:
           enableRouter: true
           routingLogic: roundrobin
+          # Router imports LMCache at startup (~20s); chart default
+          # startup probe (~20s) kills it. Allow up to ~2 min.
+          startupProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+            httpGet:
+              path: /health
+              port: router-port
     - chartName: open-webui
       chartRepo: application-collection
       chartVersion: 8.19.1
