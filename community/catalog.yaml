@@ -7,4 +7,10 @@ metadata:
 spec:
   displayName: Community Blueprints
   description: Unsupported community blueprints for SUSE AI Factory.
-  blueprints: []
+  categories:
+    - chat
+  blueprints:
+    - name: apertus-8b-chat
+      category: chat
+    - name: eurollm-22b-chat
+      category: chat

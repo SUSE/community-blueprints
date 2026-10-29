@@ -1,0 +1,101 @@
+# Chat-only blueprint serving UTTER's EuroLLM-22B (open weights, Apache-2.0,
+# all 24 official EU languages) with the vLLM Production Stack and Open WebUI.
+#
+# Release names default to the chart name, so the vllm-stack router Service is
+# "vllm-stack-router-service"; open-webui reaches it by that short name.
+---
+apiVersion: ai-factory.suse.com/v1alpha1
+kind: Blueprint
+metadata:
+  name: eurollm-22b-chat-1-0-0
+  labels:
+    ai-factory.suse.com/blueprint-name: eurollm-22b-chat
+    ai-factory.suse.com/blueprint-version: 1.0.0
+    ai-factory.suse.com/category: chat
+  annotations:
+    ai-factory.suse.com/maintainer: https://github.com/e-minguez
+spec:
+  source: Custom
+  displayName: European Models Chat - Large (EuroLLM-22B)
+  version: 1.0.0
+  description: |
+    Chat assistant backed by a European open model:
+    utter-project/EuroLLM-22B-Instruct-2512
+    (EuroLLM / UTTER project; 22B parameters; Apache-2.0; all 24 official EU
+    languages plus 11 more; strong translation; 32k context).
+    Served by the vLLM Production Stack (vllm-stack, with router and LMCache KV
+    offloading) behind an OpenAI-compatible API, with Open WebUI as the chat UI.
+
+    Hardware: 1x NVIDIA GPU with 80 GB VRAM (A100 80GB, H100, H200). The model
+    weights take ~45 GB in BF16, leaving room for the full 32768-token context.
+    For 2x 48 GB GPUs (L40S) set tensorParallelSize: 2 and requestGPU: 2; for
+    1x 48 GB GPU add "--quantization fp8" to vllmConfig.extraArgs (Ada/Hopper+).
+    The engine pod requests 8 CPU and 64Gi RAM (LMCache uses a 20 GB CPU
+    offload buffer) and a 100Gi PVC for the Hugging Face model cache.
+
+    Requirements: NVIDIA GPU nodes with the nvidia runtime class, a default
+    StorageClass, cert-manager, and outbound access to huggingface.co (the
+    model is not gated, no token needed).
+    The Open WebUI chat UI is exposed via Ingress at https://european-chat;
+    point a DNS record (or /etc/hosts entry) for "european-chat" at the
+    cluster's ingress controller. The hostname can be patched after deployment.
+    Community blueprint, not supported by SUSE.
+  components:
+    - chartName: vllm-stack
+      chartRepo: application-collection
+      chartVersion: 0.1.13
+      values:
+        servingEngineSpec:
+          runtimeClassName: nvidia
+          modelSpec:
+            - name: eurollm-22b
+              modelURL: utter-project/EuroLLM-22B-Instruct-2512
+              replicaCount: 1
+              requestCPU: 8
+              requestMemory: 64Gi
+              requestGPU: 1
+              pvcStorage: 100Gi
+              vllmConfig:
+                enablePrefixCaching: true
+                maxModelLen: 32768
+                tensorParallelSize: 1
+                gpuMemoryUtilization: 0.9
+              lmcacheConfig:
+                enabled: true
+                cpuOffloadingBufferSize: "20"
+        routerSpec:
+          enableRouter: true
+          routingLogic: roundrobin
+    - chartName: open-webui
+      chartRepo: application-collection
+      chartVersion: 8.19.1
+      values:
+        global:
+          tls:
+            source: suse-private-ai
+            issuerName: suse-private-ai
+        image:
+          registry: dp.apps.rancher.io
+          repository: containers/open-webui
+          tag: 0.6.41-15.2
+        ollama:
+          enabled: false
+        enableOpenaiApi: true
+        openaiBaseApiUrl: http://vllm-stack-router-service/v1
+        openaiApiKey: dummy
+        extraEnvVars:
+          - name: DEFAULT_USER_ROLE
+            value: user
+          - name: ENABLE_SIGNUP
+            value: "true"
+          - name: GLOBAL_LOG_LEVEL
+            value: INFO
+        persistence:
+          enabled: true
+          size: 20Gi
+        ingress:
+          enabled: true
+          host: european-chat
+          tls: true
+          annotations:
+            nginx.ingress.kubernetes.io/ssl-redirect: "true"

@@ -1,0 +1,101 @@
+# Chat-only blueprint serving Swiss AI's Apertus-8B (fully open weights, data
+# and code; Apache-2.0) with the vLLM Production Stack and Open WebUI.
+#
+# Release names default to the chart name, so the vllm-stack router Service is
+# "vllm-stack-router-service"; open-webui reaches it by that short name.
+---
+apiVersion: ai-factory.suse.com/v1alpha1
+kind: Blueprint
+metadata:
+  name: apertus-8b-chat-1-0-0
+  labels:
+    ai-factory.suse.com/blueprint-name: apertus-8b-chat
+    ai-factory.suse.com/blueprint-version: 1.0.0
+    ai-factory.suse.com/category: chat
+  annotations:
+    ai-factory.suse.com/maintainer: https://github.com/e-minguez
+spec:
+  source: Custom
+  displayName: European Models Chat - Small (Apertus-8B)
+  version: 1.0.0
+  description: |
+    Chat assistant backed by a European open model:
+    swiss-ai/Apertus-8B-Instruct-2509
+    (Swiss AI Initiative, ETH Zurich / EPFL; 8B parameters; fully open weights,
+    training data and code; Apache-2.0; 1800+ languages; tool calling).
+    Served by the vLLM Production Stack (vllm-stack, with router and LMCache KV
+    offloading) behind an OpenAI-compatible API, with Open WebUI as the chat UI.
+
+    Hardware: 1x NVIDIA GPU with at least 24 GB VRAM (L4, A10G, L40S, A100,
+    H100). The model weights take ~16 GB in BF16; maxModelLen is set to 16384
+    so it fits a 24 GB card. On a 40 GB+ GPU raise maxModelLen up to 65536.
+    The engine pod requests 4 CPU and 32Gi RAM (LMCache uses a 10 GB CPU
+    offload buffer) and a 50Gi PVC for the Hugging Face model cache.
+
+    Requirements: NVIDIA GPU nodes with the nvidia runtime class, a default
+    StorageClass, cert-manager, and outbound access to huggingface.co (the
+    model is not gated, no token needed).
+    The Open WebUI chat UI is exposed via Ingress at https://european-chat;
+    point a DNS record (or /etc/hosts entry) for "european-chat" at the
+    cluster's ingress controller. The hostname can be patched after deployment.
+    Community blueprint, not supported by SUSE.
+  components:
+    - chartName: vllm-stack
+      chartRepo: application-collection
+      chartVersion: 0.1.13
+      values:
+        servingEngineSpec:
+          runtimeClassName: nvidia
+          modelSpec:
+            - name: apertus-8b
+              modelURL: swiss-ai/Apertus-8B-Instruct-2509
+              replicaCount: 1
+              requestCPU: 4
+              requestMemory: 32Gi
+              requestGPU: 1
+              pvcStorage: 50Gi
+              enableTool: true
+              toolCallParser: apertus
+              vllmConfig:
+                enablePrefixCaching: true
+                maxModelLen: 16384
+                gpuMemoryUtilization: 0.9
+              lmcacheConfig:
+                enabled: true
+                cpuOffloadingBufferSize: "10"
+        routerSpec:
+          enableRouter: true
+          routingLogic: roundrobin
+    - chartName: open-webui
+      chartRepo: application-collection
+      chartVersion: 8.19.1
+      values:
+        global:
+          tls:
+            source: suse-private-ai
+            issuerName: suse-private-ai
+        image:
+          registry: dp.apps.rancher.io
+          repository: containers/open-webui
+          tag: 0.6.41-15.2
+        ollama:
+          enabled: false
+        enableOpenaiApi: true
+        openaiBaseApiUrl: http://vllm-stack-router-service/v1
+        openaiApiKey: dummy
+        extraEnvVars:
+          - name: DEFAULT_USER_ROLE
+            value: user
+          - name: ENABLE_SIGNUP
+            value: "true"
+          - name: GLOBAL_LOG_LEVEL
+            value: INFO
+        persistence:
+          enabled: true
+          size: 20Gi
+        ingress:
+          enabled: true
+          host: european-chat
+          tls: true
+          annotations:
+            nginx.ingress.kubernetes.io/ssl-redirect: "true"
