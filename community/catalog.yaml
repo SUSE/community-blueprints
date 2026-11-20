@@ -9,8 +9,11 @@ spec:
   description: Unsupported community blueprints for SUSE AI Factory.
   categories:
     - chat
+    - infrastructure
   blueprints:
     - name: apertus-8b-chat
       category: chat
     - name: eurollm-22b-chat
       category: chat
+    - name: nvidia-runai-oss
+      category: infrastructure

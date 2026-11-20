@@ -74,7 +74,9 @@ jobs:
         id: kubeconform
         continue-on-error: true
         run: |
-          find community example -name '*.yaml' -print0 \
+          # ClusterRepos have no schema here; check_clusterrepo in catalog.py
+          # validates their fixed shape instead.
+          find community example -name '*.yaml' -not -path '*/clusterrepos/*' -print0 \
             | xargs -0 kubeconform \
                 -strict -summary \
                 -schema-location 'schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json'
@@ -88,6 +90,11 @@ jobs:
         id: drift
         continue-on-error: true
         run: python scripts/catalog.py gen --check
+
+      - name: Unit tests
+        id: unittest
+        continue-on-error: true
+        run: python -m unittest -q scripts/test_catalog.py
 
       - name: Label and comment
         if: always() && github.event_name == 'pull_request'
@@ -143,7 +150,8 @@ jobs:
           steps.yamllint.outcome == 'failure' ||
           steps.kubeconform.outcome == 'failure' ||
           steps.conventions.outcome == 'failure' ||
-          steps.drift.outcome == 'failure'
+          steps.drift.outcome == 'failure' ||
+          steps.unittest.outcome == 'failure'
         run: |
           echo "One or more validation steps failed. See logs and the job summary."
           exit 1

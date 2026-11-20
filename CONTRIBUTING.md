@@ -35,6 +35,30 @@ Unsure whether a blueprint fits? Open a *Blueprint proposal* issue first.
 4. Commit **both** your blueprint and the regenerated `community/catalog.yaml`,
    then open a PR.
 
+## Adding a ClusterRepo
+
+A Blueprint can only install charts from a repository the cluster already has.
+A `ClusterRepo` file registers one, at
+`community/<contributor>/clusterrepos/<name>.yaml`, and Fleet applies it like any other
+manifest. Because it adds a chart source to every cluster, it must be approved:
+
+- The `(name, url)` pair must be listed in `ALLOWED_CLUSTERREPOS` in
+  [`scripts/catalog.py`](scripts/catalog.py). Adding an entry is a change to that
+  file, reviewed by a SUSE maintainer; CI rejects any unlisted repo.
+- The shape is fixed: `apiVersion: catalog.cattle.io/v1`, `kind: ClusterRepo`,
+  `metadata.name` (equal to the file name, unique across contributors) and
+  `spec.url` (`https://`, exactly the allowlisted URL). Nothing else, so no
+  labels, annotations, credentials, `insecureSkipTLSVerify`, `gitRepo` etc.
+
+```yaml
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: example-charts
+spec:
+  url: https://charts.example.com/stable
+```
+
 ## Rules CI enforces
 
 | Rule | Why |
@@ -50,6 +74,8 @@ Unsure whether a blueprint fits? Open a *Blueprint proposal* issue first.
 | required: `displayName`, `description`, `components` | usable catalog entry |
 | the CR validates against the live Blueprint CRD schema | valid on the cluster |
 | a `blueprint-name` is owned by exactly one contributor | no cross-contributor collisions |
+| ClusterRepo files have the fixed shape above and their `(name, url)` is in `ALLOWED_CLUSTERREPOS` | new chart sources are maintainer-approved |
+| no other manifest under `community/`: only `blueprints/*.yaml`, `clusterrepos/*.yaml` and `catalog.yaml` (any `.yaml`/`.yml`/`.json`, symlinks included, is rejected) | Fleet applies everything under `community/` |
 | `community/catalog.yaml` is regenerated (not stale) | aggregate never drifts |
 
 > [!NOTE]

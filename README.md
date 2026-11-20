@@ -25,7 +25,9 @@ commit it with their blueprint, and CI fails the PR if it's stale.
 community-blueprints/
 ├── community/                # one folder per contributor
 │   ├── catalog.yaml          # aggregate BlueprintCatalog CR (run `catalog.py gen`; CI checks it)
-│   └── <contributor>/blueprints/<name>-<version>.yaml
+│   └── <contributor>/
+│       ├── blueprints/<name>-<version>.yaml
+│       └── clusterrepos/<name>.yaml   # optional, maintainer-approved (see below)
 ├── example/                  # a working template (validated, not published)
 ├── scripts/                  # validation + catalog generation
 └── .github/workflows/        # the PR validation gate
@@ -45,8 +47,18 @@ blueprintCatalogs:
     paths: [community]
 ```
 
-Fleet applies every `Blueprint` under `community/**` plus the aggregate
-`BlueprintCatalog`, and garbage-collects anything removed from the repo.
+Fleet applies **every manifest** under `community/**`: the `Blueprint` files, any
+`ClusterRepo` files and the aggregate `BlueprintCatalog`. It garbage-collects
+anything removed from the repo.
+CI therefore rejects every other manifest under `community/`: only
+`blueprints/*.yaml`, `clusterrepos/*.yaml` and `catalog.yaml` are accepted
+(no `fleet.yaml`, `kustomization.yaml`, RBAC, `.yml`/`.json` files or symlinks).
+
+A `ClusterRepo` (`catalog.cattle.io/v1`) registers a Helm chart source for
+Blueprints. It has a fixed shape (name and `https` URL only) and must match an
+entry in `ALLOWED_CLUSTERREPOS` in `scripts/catalog.py`, so adding one needs a
+maintainer-reviewed change. Because Fleet removes a `ClusterRepo` from clusters
+when its file is deleted, never remove one while Blueprints still use it.
 Nothing is added to a cluster unless an administrator opts in with this entry.
 
 Community blueprints use `spec.source: Custom` and may set an optional
@@ -68,6 +80,7 @@ is planned, and this repo will switch to it once SUSE AI Factory supports it.
 pip install --require-hashes -r requirements.txt
 python scripts/catalog.py validate     # schema/convention checks
 python scripts/catalog.py gen          # regenerate community/catalog.yaml
+python -m unittest -q scripts/test_catalog.py
 ```
 
 ## License

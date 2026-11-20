@@ -2,7 +2,8 @@
 """Validate community blueprints and (re)generate the aggregate catalog.
 
 Subcommands:
-  validate            Check every Blueprint CR under community/ and example/.
+  validate            Check every Blueprint CR under community/ and example/, every
+                      ClusterRepo, and reject any other manifest under community/.
   gen                 Rewrite community/catalog.yaml's membership from community/**.
   gen --check         Fail (non-zero) if community/catalog.yaml is stale, changing nothing.
 
@@ -24,6 +25,13 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG_FILE = os.path.join(ROOT, "community", "catalog.yaml")
+
+# Directory Fleet applies in full (the GitRepo path).
+FLEET_ROOT = "community"
+
+# ClusterRepos a contributor may ship, name -> url. Adding a chart source is a
+# maintainer-reviewed change to this dict; the URL must match exactly.
+ALLOWED_CLUSTERREPOS = {"nvidia-runai-oss": "https://helm.ngc.nvidia.com/nvidia/runai-oss"}
 
 NAME_LABEL = "ai-factory.suse.com/blueprint-name"
 VERSION_LABEL = "ai-factory.suse.com/blueprint-version"
@@ -179,6 +187,143 @@ def check_file(path):
     return info, errors
 
 
+# --- Fleet-applied surface: ClusterRepo manifests and stray-file check ---------
+# Fleet applies every manifest under FLEET_ROOT, so this section is a security
+# control. Identical in both blueprint repos; only FLEET_ROOT and
+# ALLOWED_CLUSTERREPOS (top of file) differ.
+CLUSTERREPO_API = "catalog.cattle.io/v1"
+CLUSTERREPO_GLOB = os.path.join(ROOT, FLEET_ROOT, "*", "clusterrepos", "*.yaml")
+DNS_LABEL = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
+MANIFEST_SUFFIXES = (".yaml", ".yml", ".json")
+
+
+class UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys instead of keeping the last."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=True)
+            try:
+                dup = key in seen
+                seen.add(key)
+            except TypeError:  # unhashable key; the base class reports it
+                continue
+            if dup:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate key {key!r}", key_node.start_mark)
+        return super().construct_mapping(node, deep)
+
+
+def rel_path(path):
+    return os.path.relpath(path, ROOT).replace("\\", "/")
+
+
+def extra_keys(mapping, allowed, where, hint):
+    return [f"{where}{key} is not allowed; {hint}"
+            for key in sorted(set(mapping) - set(allowed), key=str)]
+
+
+def check_clusterrepo(path):
+    """Return (info, errors) for one ClusterRepo file. Fixed shape: only name and url."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            docs = list(yaml.load_all(fh, Loader=UniqueKeyLoader))
+    except (yaml.YAMLError, UnicodeDecodeError) as exc:
+        return None, [f"invalid YAML: {exc}"]
+    if len(docs) != 1:
+        return None, [f"must contain exactly one YAML document, found {len(docs)}"]
+    doc = docs[0]
+    if not isinstance(doc, dict):
+        return None, ["not a YAML mapping"]
+
+    errors = extra_keys(doc, ("apiVersion", "kind", "metadata", "spec"), "",
+                        "a ClusterRepo has only apiVersion, kind, metadata and spec")
+    if doc.get("apiVersion") != CLUSTERREPO_API:
+        errors.append(f"apiVersion must be {CLUSTERREPO_API}, got {doc.get('apiVersion')!r}")
+    if doc.get("kind") != "ClusterRepo":
+        errors.append(f"kind must be 'ClusterRepo', got {doc.get('kind')!r}")
+
+    meta, spec = doc.get("metadata"), doc.get("spec")
+    if not isinstance(meta, dict):
+        errors.append("metadata must be a mapping with only 'name'")
+        meta = {}
+    if not isinstance(spec, dict):
+        errors.append("spec must be a mapping with only 'url'")
+        spec = {}
+    errors.extend(extra_keys(meta, ("name",), "metadata.",
+                             "a ClusterRepo may only set metadata.name"))
+    errors.extend(extra_keys(spec, ("url",), "spec.",
+                             "a ClusterRepo may only set spec.url"))
+
+    name, url = meta.get("name"), spec.get("url")
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if not isinstance(name, str) or not DNS_LABEL.fullmatch(name):
+        errors.append(f"metadata.name must be a DNS-1123 label, got {name!r}")
+    elif name != stem:
+        errors.append(f"metadata.name must equal the file name '{stem}', got {name!r}")
+    if not isinstance(url, str) or not url:
+        errors.append("spec.url is required")
+    elif not url.startswith("https://"):
+        errors.append(f"spec.url must be an https:// URL, got {url!r}")
+
+    if isinstance(name, str) and isinstance(url, str):
+        allowed = ALLOWED_CLUSTERREPOS.get(name)
+        if allowed is None or url != allowed:
+            errors.append(
+                f"ClusterRepo '{name}' with url {url!r} is not in ALLOWED_CLUSTERREPOS; "
+                "new chart sources need a maintainer-reviewed change to that "
+                "allowlist in scripts/catalog.py")
+    return {"name": name if isinstance(name, str) else None}, errors
+
+
+def fleet_surface_problems():
+    """Check ClusterRepos and stray manifests under FLEET_ROOT.
+
+    Returns (problems, clusterrepo_count); problems maps relative path -> [errors].
+    """
+    problems = {}
+
+    def add(path, message):
+        problems.setdefault(rel_path(path), []).append(message)
+
+    clusterrepos = sorted(glob.glob(CLUSTERREPO_GLOB))
+    seen = {}
+    for path in clusterrepos:
+        info, errs = check_clusterrepo(path)
+        for err in errs:
+            add(path, err)
+        name = info and info["name"]
+        if name and name in seen:
+            add(path, f"duplicate ClusterRepo '{name}' (also in {seen[name]})")
+        elif name:
+            seen[name] = rel_path(path)
+
+    # Known files come from the same globs the validators use, so a file is
+    # accepted only if it is also validated.
+    known = {os.path.normpath(p)
+             for p in blueprint_files(FLEET_ROOT) + clusterrepos + [CATALOG_FILE]}
+    top = os.path.join(ROOT, FLEET_ROOT)
+    walk = os.walk(top, onerror=lambda exc: add(top, f"cannot read directory: {exc}"))
+    for dirpath, dirnames, filenames in walk if os.path.isdir(top) else ():
+        for dirname in dirnames:
+            path = os.path.join(dirpath, dirname)
+            if os.path.islink(path):
+                add(path, "symlinked directories are not allowed")
+        for filename in filenames:
+            path = os.path.join(dirpath, filename)
+            if not filename.lower().endswith(MANIFEST_SUFFIXES):
+                continue
+            if os.path.islink(path):
+                add(path, "symlinked manifests are not allowed")
+            elif not filename.endswith(".yaml") or os.path.normpath(path) not in known:
+                add(path, f"unexpected manifest: Fleet applies every .yaml/.yml/.json file "
+                          f"under {FLEET_ROOT}/, so only {FLEET_ROOT}/<name>/blueprints/*.yaml, "
+                          f"{FLEET_ROOT}/<name>/clusterrepos/*.yaml and the generated "
+                          f"catalog.yaml are accepted")
+    return problems, len(clusterrepos)
+
+
 def validate():
     """Validate community/ and example/. Returns (ok, summary_markdown)."""
     problems = {}  # path -> [errors]
@@ -191,6 +336,10 @@ def validate():
                 problems[rel] = errs
             if info:
                 infos.append((rel, info))
+
+    fleet_problems, clusterrepo_count = fleet_surface_problems()
+    for rel, errs in fleet_problems.items():
+        problems.setdefault(rel, []).extend(errs)
 
     # cross-file: unique (name, version); a name owned by one contributor only
     seen_nv = {}
@@ -216,7 +365,7 @@ def validate():
     ok = not problems
     lines = []
     if ok:
-        lines.append(f"✅ {len(infos)} blueprint(s) valid.")
+        lines.append(f"✅ {len(infos)} blueprint(s) and {clusterrepo_count} ClusterRepo(s) valid.")
     else:
         lines.append(f"❌ {len(problems)} file(s) with problems:")
         for rel in sorted(problems):
